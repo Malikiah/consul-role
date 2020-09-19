@@ -1,0 +1,20 @@
+{
+  "server": true,
+  "node_name": "{{ ansible_facts.nodename }}",
+  "datacenter": "{{ dc }}",
+  "data_dir": "/var/consul/data",
+  "acl" : {
+    "enabled": true,
+    "default_policy": "deny",
+    "down_policy": "extend-cache"
+  },
+  "bind_addr": "0.0.0.0",
+  "client_addr": "0.0.0.0",
+  "advertise_addr": "{{ ansible_facts.default_ipv4.address }}",
+  "bootstrap_expect": {{ groups['consul-nodes']|length }},
+  "retry_join": ["{{ groups['consul-nodes'] | map('extract', hostvars, ['ansible_host']) | join('","') }}"],
+  "ui": true,
+  "log_level": "DEBUG",
+  "enable_syslog": true,
+  "acl_enforce_version_8": false
+}

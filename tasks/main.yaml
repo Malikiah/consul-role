@@ -1,0 +1,127 @@
+---
+- include: firewall.yaml
+- include: packages.yaml 
+
+
+- name: Install required packages
+  yum:
+    name: "{{ packages }}"
+    state: latest
+  vars:
+    packages:
+    - zip
+    - unzip
+
+
+- name: Download consul
+  get_url:
+    url: https://releases.hashicorp.com/consul/{{ consul_version }}/consul_{{ consul_version }}_linux_amd64.zip
+    dest: .
+
+- name: Extract Consul
+  unarchive:
+    src: consul_{{ consul_version }}_linux_amd64.zip
+    dest: .
+    remote_src: yes
+
+- name: Change file ownership, group and permissions
+  file:
+    path: consul
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: stat consul
+  stat: path=consul
+  register: consul
+
+- name: Move Consul to bin
+  command: mv consul /usr/local/bin
+  when: consul.stat.exists
+
+
+- name: Install consul
+  command: consul -autocomplete-install
+  register: consul_output
+  ignore_errors: yes
+  # failed_when: 
+  # - "'already installed in' not in consul_output.stderr"
+# - "'Undefined' not in consule_output.stderr"
+
+# - name:
+#   command: complete -C /usr/local/bin/consul consul
+
+- name: Add user Consul
+  user:
+    name: consul
+    create_home: no
+    shell: /usr/bin/false
+
+- name: Creating directory /var/consul
+  file:
+    owner: root
+    path: /var/consul
+    state: directory
+
+- name: Creating directory /var/consul/data
+  file:
+    recurse: yes
+    owner: consul
+    path: /var/consul/data
+    state: directory
+
+- name: Creating directory /opt/consul
+  file:
+    recurse: yes
+    owner: consul
+    path: /opt/consul
+    state: directory
+
+- name: Creating from template templates/consul.service.j2 to /etc/systemd/system/consul.service
+  template:
+    src: templates/consul.service.j2
+    dest: /etc/systemd/system/consul.service
+    mode: '0644'
+  
+# - name: Generating consul key
+#   shell: consul keygen
+#   register: consul_keygen
+
+# - set_fact: 
+#     consul_keygen: "{{ consul_keygen.stdout }}"
+
+# - debug:
+#     msg: "{{ consul_keygen }}"
+
+- name: Creating Initial ACL Token
+  shell: consul acl bootstrap
+  register: consul_token
+  when: ansible_facts.default_ipv4.address == (groups['consul-nodes'] | map('extract', hostvars, ['ansible_host']) | join(',')).split(',')[0]
+
+- debug:
+    msg: "{{ consul_token.stdout }}"
+
+- name: Creating directory /usr/local/etc/consul
+  file:
+    recurse: yes
+    owner: consul
+    path: /usr/local/etc/consul
+    state: directory
+
+- name: Creating from template templates/consul.service.j2 to  /usr/local/etc/consul/consul_s1.json
+  template:
+    src: templates/consul.json.j2
+    dest: /usr/local/etc/consul/{{ ansible_facts.nodename }}.json
+
+
+- name: Starting & Enabling Consul
+  systemd:
+    name: consul
+    enabled: yes
+    state: started
+  
+- name: Checking Consul status
+  command: systemctl status consul
+  register: consul_status
+
+  
